@@ -8,6 +8,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET_KEY = 'traveler_tale_super_secret_key';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'boss888'; // 👑 店主专属暗号
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/traveler_shop';
 
@@ -25,7 +26,7 @@ const UserSchema = new mongoose.Schema({
     password: { type: String, required: true },
     nickname: { type: String, default: '无名旅人' },
     avatar: { type: String },
-    points: { type: Number, default: 880 } // 初始赠送880积分
+    points: { type: Number, default: 880 }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -34,8 +35,8 @@ const OrderSchema = new mongoose.Schema({
     items: Array,
     date: String,
     total: Number,
-    pointsEarned: Number, // 本次获得的积分
-    pointsSpent: Number,  // 本次消耗的积分
+    pointsEarned: Number,
+    pointsSpent: Number,
     status: { type: String, default: '已结契' },
     createdAt: { type: Date, default: Date.now }
 });
@@ -53,24 +54,32 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+// 👑 掌柜专属鉴权中间件
+const authenticateAdmin = (req, res, next) => {
+    if (req.headers['admin-secret'] === ADMIN_SECRET) {
+        next();
+    } else {
+        res.status(403).json({ success: false, message: '掌柜暗号不正确，无权访问' });
+    }
+};
+
+// --- 前台 API (保持不变) ---
 app.post('/api/register', async (req, res) => {
     const { username, phone, password, nickname } = req.body;
     try {
         const existingUser = await User.findOne({ $or: [{ username }, { phone }] });
-        if (existingUser) return res.status(400).json({ success: false, message: '该账号或手机号已被注册' });
-        
+        if (existingUser) return res.status(400).json({ success: false, message: '该账号或手机号已被占用' });
         const newUser = new User({ username, phone, password, nickname: nickname || '旅人', avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}` });
         await newUser.save();
         res.json({ success: true, message: '契约建立成功' });
-    } catch (err) { res.status(500).json({ success: false, message: '服务器开小差了' }); }
+    } catch (err) { res.status(500).json({ success: false, message: '注册异常' }); }
 });
 
 app.post('/api/login', async (req, res) => {
     const { loginId, password } = req.body; 
     try {
         const user = await User.findOne({ $or: [{ username: loginId }, { phone: loginId }], password });
-        if (!user) return res.status(401).json({ success: false, message: '账号/手机号或口令不正确' });
-        
+        if (!user) return res.status(401).json({ success: false, message: '账号/手机号或口令错误' });
         const token = jwt.sign({ userId: user._id }, SECRET_KEY, { expiresIn: '7d' });
         res.json({ success: true, token, user: { nickname: user.nickname, avatar: user.avatar, points: user.points } });
     } catch (err) { res.status(500).json({ success: false, message: '登录异常' }); }
@@ -84,34 +93,19 @@ app.get('/api/me', authenticateToken, async (req, res) => {
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// 🌟 升级版：提交订单与积分结算
 app.post('/api/orders', authenticateToken, async (req, res) => {
     const { items, date, total } = req.body;
     try {
         const user = await User.findById(req.user.userId);
-        if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
-
-        // 1. 计算本次要消耗的积分 (购物车里 isRedemption 为 true 的商品)
         const pointsSpent = items.reduce((sum, item) => sum + (item.pointsCost || 0), 0);
-        if (user.points < pointsSpent) {
-            return res.status(400).json({ success: false, message: '积分余额不足，无法结契' });
-        }
-
-        // 2. 计算本次消费获得的积分 (1元 = 1积分，向下取整)
+        if (user.points < pointsSpent) return res.status(400).json({ success: false, message: '积分不足' });
         const pointsEarned = Math.floor(total);
-
-        // 3. 更新用户余额：当前积分 - 花掉的 + 赚到的
         user.points = user.points - pointsSpent + pointsEarned;
         await user.save();
-
-        // 4. 生成订单记录
         const newOrder = new Order({ userId: req.user.userId, items, date, total, pointsEarned, pointsSpent });
         await newOrder.save();
-
         res.json({ success: true, message: '契约已归档', newPoints: user.points });
-    } catch (err) {
-        res.status(500).json({ success: false, message: '归档失败' });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: '归档失败' }); }
 });
 
 app.get('/api/orders', authenticateToken, async (req, res) => {
@@ -121,5 +115,44 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, message: '获取记录失败' }); }
 });
 
-app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+// --- 👑 后台 API (全新加入) ---
+app.get('/api/admin/summary', authenticateAdmin, async (req, res) => {
+    try {
+        const userCount = await User.countDocuments();
+        const orderCount = await Order.countDocuments();
+        const orders = await Order.find();
+        const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+        res.json({ success: true, summary: { userCount, orderCount, totalRevenue } });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.get('/api/admin/users', authenticateAdmin, async (req, res) => {
+    try {
+        // 返回所有用户，但排除密码字段保护隐私
+        const users = await User.find().select('-password').sort({ _id: -1 });
+        res.json({ success: true, users });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.get('/api/admin/orders', authenticateAdmin, async (req, res) => {
+    try {
+        // 查找所有订单，并把下单人的昵称和手机号也关联出来
+        const orders = await Order.find().populate('userId', 'nickname phone').sort({ createdAt: -1 });
+        res.json({ success: true, orders });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.post('/api/admin/orders/:id/status', authenticateAdmin, async (req, res) => {
+    try {
+        const order = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
+        res.json({ success: true, order });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.get(/.*/, (req, res) => {
+    // 简单路由匹配，如果是 /admin.html 则返回后台页面
+    if(req.path === '/admin.html') return res.sendFile(path.join(__dirname, 'admin.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 app.listen(PORT, () => console.log(`🚀 驿站服务器已在端口 ${PORT} 启动`));
