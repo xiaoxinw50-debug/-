@@ -1,476 +1,125 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>⚜ 旅人物语 · Traveler's Tale ⚜</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700&family=SF+Pro+Display:wght@300;400;600&display=swap');
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const path = require('path');
 
-        :root {
-            --pastoral-bg: #fbfbf0; 
-            --sage-green: #c1d3c1; 
-            --deep-sage: #5d755d; 
-            --warm-oat: #f3e5dc; 
-            --apple-ease: cubic-bezier(0.4, 0, 0.2, 1);
+const app = express();
+const PORT = process.env.PORT || 3000;
+const SECRET_KEY = 'traveler_tale_super_secret_key';
+
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/traveler_shop';
+
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, '.')));
+
+mongoose.connect(MONGODB_URI)
+    .then(() => console.log('🍃 [数据库] MongoDB 契约石碑已连接！'))
+    .catch(err => console.error('❌ [数据库] 连接失败:', err));
+
+// --- 1. 升级版用户模型 (新增手机号) ---
+const UserSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true }, 
+    phone: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    nickname: { type: String, default: '无名旅人' },
+    avatar: { type: String },
+    points: { type: Number, default: 880 }
+});
+const User = mongoose.model('User', UserSchema);
+
+const OrderSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    items: Array,
+    date: String,
+    total: Number,
+    status: { type: String, default: '已结契' },
+    createdAt: { type: Date, default: Date.now }
+});
+const Order = mongoose.model('Order', OrderSchema);
+
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: '请出示通行令' });
+
+    jwt.verify(token, SECRET_KEY, (err, user) => {
+        if (err) return res.status(403).json({ success: false, message: '通行令已失效' });
+        req.user = user; 
+        next();
+    });
+};
+
+// --- 2. 注册接口 ---
+app.post('/api/register', async (req, res) => {
+    const { username, phone, password, nickname } = req.body;
+    try {
+        const existingUser = await User.findOne({ $or: [{ username }, { phone }] });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: '该旅人账号或手机号已被注册' });
         }
-
-        /* === 1. 基础全局样式 === */
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
-        ::-webkit-scrollbar { display: none; }
-        body, html { margin: 0; padding: 0; background: #f0f0f0; height: 100vh; width: 100vw; overflow: hidden; font-family: 'SF Pro Display', -apple-system, sans-serif; }
-
-        #viewport { 
-            height: 100%; width: 100%; overflow-y: auto; 
-            background: var(--pastoral-bg); 
-            background-image: url('https://www.transparenttextures.com/patterns/cream-paper.png');
-            transition: all 0.8s var(--apple-ease); position: relative; z-index: 1; 
-        }
-        body.modal-open #viewport { transform: scale(0.92) translateY(-20px); filter: brightness(0.85) blur(10px); border-radius: 42px; pointer-events: none; }
-
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* === 🌟 封面海报样式 === */
-        #cover-page {
-            position: fixed; inset: 0; z-index: 3000;
-            background: linear-gradient(rgba(60, 75, 60, 0.3), rgba(40, 50, 40, 0.7)), url('https://images.unsplash.com/photo-1515347619362-e6fd233b4fb5?auto=format&fit=crop&w=1080&q=80') center/cover;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: white; transition: all 1.2s var(--apple-ease);
-        }
-        #cover-page.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); filter: blur(10px); }
-        .cover-title { font-family: 'Noto Serif SC', serif; font-size: 3.2rem; margin-bottom: 10px; font-weight: 700; letter-spacing: 6px; text-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-        .cover-sub { font-family: 'SF Pro Display', sans-serif; font-size: 0.9rem; letter-spacing: 4px; opacity: 0.85; margin-bottom: 50px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-        .btn-enter { 
-            background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); 
-            border: 1px solid rgba(255,255,255,0.5); color: white; padding: 16px 45px; border-radius: 100px; 
-            font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.5s; letter-spacing: 2px; 
-        }
-        .btn-enter:hover { background: white; color: var(--deep-sage); transform: translateY(-3px); box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-
-        /* === 2. 导航栏样式 === */
-        nav { 
-            position: sticky; top: 0; z-index: 100; 
-            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); 
-            background: rgba(251, 251, 240, 0.85); 
-            display: flex; justify-content: space-between; align-items: center; 
-            padding: 20px 24px; border-bottom: 1px solid rgba(93, 117, 93, 0.1); 
-        }
-        .logo { font-family: 'Noto Serif SC', serif; font-size: 1.4rem; color: var(--deep-sage); font-weight: 700; letter-spacing: 1px; }
-        .nav-right { display: flex; align-items: center; gap: 15px; }
-        .nav-btn { font-size: 0.75rem; font-weight: 700; color: var(--deep-sage); cursor: pointer; }
-
-        /* === 3. 页面容器与卡片 === */
-        .container { padding: 20px; max-width: 500px; margin: 0 auto; padding-bottom: 160px; }
-        .product-card { 
-            background: white; border-radius: 36px; padding: 18px; margin-bottom: 28px; 
-            box-shadow: 0 15px 45px rgba(93, 117, 93, 0.08); position: relative; 
-            border: 1px solid rgba(193, 211, 193, 0.3); animation: fadeInUp 0.8s var(--apple-ease) backwards;
-        }
-        .img-box { width: 100%; height: 400px; background: #f4f6f2; border-radius: 28px; overflow: hidden; position: relative; }
-        .img-box img { width: 100%; height: 100%; object-fit: cover; transition: 1.2s var(--apple-ease); }
-        .product-card:hover .img-box img { transform: scale(1.05); }
-
-        /* === 4. 规格与日历 === */
-        .size-selector { display: flex; gap: 12px; overflow-x: auto; padding: 10px 0; }
-        .size-chip { flex-shrink: 0; padding: 14px 22px; border-radius: 18px; background: #f9faf7; color: #8fa58f; border: 1.5px solid transparent; transition: 0.4s; cursor: pointer; text-align: center; }
-        .size-chip.active { background: white; border-color: var(--sage-green); color: var(--deep-sage); box-shadow: 0 8px 25px rgba(193, 211, 193, 0.25); transform: translateY(-2px); }
-        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 20px; }
-        .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border-radius: 50%; color: #d0d8d0; transition: 0.3s; position: relative; }
-        .cal-day.valid { color: #5d755d; cursor: pointer; font-weight: 600; }
-        .cal-day.selected { background: var(--deep-sage) !important; color: white !important; transform: scale(1.15); box-shadow: 0 5px 15px rgba(93, 117, 93, 0.3); }
-
-        /* === 5. 按钮与底部组件 === */
-        .btn-add { background: var(--deep-sage); color: white; border: none; border-radius: 100px; padding: 16px 32px; font-weight: 600; cursor: pointer; transition: 0.3s; }
-        .btn-add:active { transform: scale(0.94); filter: brightness(1.1); }
-        .pill-bar { position: fixed; bottom: 35px; left: 24px; right: 24px; z-index: 500; display: flex; gap: 12px; }
-        .pill-cart { flex: 1; background: var(--deep-sage); border-radius: 100px; padding: 18px 28px; color: white; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 15px 35px rgba(93, 117, 93, 0.3); }
-        .cs-trigger { width: 62px; height: 62px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #eee; transition: 0.4s; }
-
-        /* === 6. 抽屉与表单 === */
-        .sheet { position: fixed; bottom: 0; left: 0; right: 0; background: var(--pastoral-bg); border-radius: 45px 45px 0 0; padding: 32px; transform: translateY(105%); transition: transform 0.6s var(--apple-ease); z-index: 1100; max-height: 85vh; overflow-y: auto; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); }
-        .sheet.active { transform: translateY(0); }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(30, 35, 30, 0.4); z-index: 1000; display: none; backdrop-filter: blur(6px); }
-        body.modal-open .modal-overlay { display: block; }
-        .auth-input { width: 100%; padding: 16px; border-radius: 18px; border: 1.5px solid #eef0ee; margin-bottom: 12px; font-size: 1rem; transition: 0.3s; }
-        .auth-input:focus { border-color: var(--sage-green); background: #fff; }
-
-        /* === 7. 签名与动画印章 === */
-        .signature-pad { background: #fff; border: 2px dashed var(--sage-green); border-radius: 24px; margin: 15px 0; touch-action: none; width: 100%; height: 220px; cursor: crosshair; }
-        .seal-box { position: absolute; bottom: 40px; right: 40px; width: 85px; height: 85px; border: 3px solid #b22222; color: #b22222; border-radius: 50%; display: none; align-items: center; justify-content: center; font-weight: 900; font-family: 'Noto Serif SC'; font-size: 0.85rem; opacity: 0.8; pointer-events: none; text-align: center; line-height: 1.2; background: rgba(178, 34, 34, 0.05); }
-        .seal-active { display: flex !important; animation: seal-drop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-        @keyframes seal-drop { 0% { transform: scale(4) rotate(30deg); opacity: 0; filter: blur(8px); } 70% { transform: scale(0.9) rotate(-15deg); opacity: 1; filter: blur(0); } 100% { transform: scale(1) rotate(-15deg); opacity: 0.85; box-shadow: 0 0 15px rgba(178, 34, 34, 0.2); } }
-
-        /* === 8. Toast 提示 === */
-        #toast { position: fixed; top: 40px; left: 50%; transform: translateX(-50%) translateY(-100px); background: var(--deep-sage); color: white; padding: 12px 24px; border-radius: 100px; z-index: 2000; transition: 0.5s var(--apple-ease); font-size: 0.9rem; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        #toast.show { transform: translateX(-50%) translateY(0); }
-    </style>
-</head>
-<body>
-
-<div id="cover-page">
-    <div class="cover-title">旅人物语</div>
-    <div class="cover-sub">TRAVELER'S TALE · 慢作定制</div>
-    <button class="btn-enter" onclick="enterShop()">推开驿站之门</button>
-</div>
-
-<div id="toast">已放入竹篮</div>
-
-<div id="viewport">
-    <nav>
-        <div class="logo">⚜ 旅人物语</div>
-        <div class="nav-right">
-            <div id="history-btn" onclick="loadHistory()" style="cursor:pointer; font-size:1.2rem; display:flex; align-items:center;" title="历史契约">📜</div>
-            
-            <div id="auth-btn" class="nav-btn" onclick="toggleSheet('auth-sheet')">IDENTITY AUTH</div>
-            
-            <div id="user-profile" style="display:none; align-items:center; gap:10px; background:rgba(193,211,193,0.3); padding:6px 14px; border-radius:100px;">
-                <img src="" class="user-avatar" id="nav-avatar" style="width:28px; height:28px; border-radius:50%; border: 2px solid white;">
-                <div style="display: flex; flex-direction: column;">
-                    <span id="nav-nickname" style="font-size:0.75rem; color:var(--deep-sage); font-weight:700; line-height:1;">旅人</span>
-                    <span id="nav-points" style="font-size:0.6rem; color:var(--deep-sage); opacity:0.7;">积分: 0</span>
-                </div>
-                <div onclick="logout()" style="cursor:pointer; margin-left:5px; padding-left:10px; border-left:1px solid rgba(93,117,93,0.3); font-size:1rem;" title="退出旅程">🚪</div>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div class="product-card">
-            <div class="img-box">
-                <img src="https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=800&q=80">
-                <div style="position:absolute; bottom:20px; left:20px; background:rgba(255,255,255,0.8); padding:6px 14px; border-radius:100px; font-size:0.6rem; color:var(--deep-sage); font-weight:700; backdrop-filter:blur(5px);">PREMIUM HANDMADE</div>
-            </div>
-            <div style="padding:20px 8px;">
-                <h3 style="margin:10px 0; font-family:'Noto Serif SC', serif; font-size:1.7rem; color:var(--deep-sage);">棉麻物语 · 慢作定制</h3>
-                <p style="font-size:0.85rem; color:#8fa58f; line-height:1.6; margin-bottom:20px;">选用苏格兰进口亚麻与天然草木染工艺。</p>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span id="display-price" style="font-family:'SF Pro Display'; font-size:1.9rem; color:var(--deep-sage); font-weight:700;">¥2,999.00</span>
-                    <button class="btn-add" onclick="addToCart('棉麻物语定制', 2999, 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=100&q=80')">放入竹篮</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="product-card" style="padding:28px;">
-            <span style="font-size:0.75rem; color:var(--deep-sage); font-weight:800;">Size Selection / 量体裁衣</span>
-            <div class="size-selector" id="size-box"></div>
-        </div>
-
-        <div class="product-card" style="padding:28px;">
-            <span style="font-size:0.75rem; color:var(--deep-sage); font-weight:800;">Journey Schedule / 预约慢档</span>
-            <div class="cal-grid" id="calendar"></div>
-            <p id="date-status" style="font-size:0.85rem; color:var(--deep-sage); text-align:center; margin-top:25px; font-weight:600;">请选定您的手作工期</p>
-        </div>
-    </div>
-</div>
-
-<div class="pill-bar">
-    <div class="pill-cart" onclick="toggleSheet('cart-sheet')">
-        <div style="display:flex; align-items:center; gap:12px;"><span>⚜</span><span style="font-size:0.9rem; font-weight:600;">MY竹篮</span></div>
-        <span id="cart-count" style="background:white; color:var(--deep-sage); padding:3px 12px; border-radius:20px; font-size:0.8rem; font-weight:700;">0</span>
-    </div>
-    <div class="cs-trigger" onclick="toast('🎋 管家正在准备茶点...')">🎋</div>
-</div>
-
-<div id="auth-sheet" class="sheet">
-    <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
-    <h3 id="auth-title" style="font-family:'Noto Serif SC', serif; color:var(--deep-sage); text-align:center;">身份认证</h3>
-    <div style="margin-top:20px;">
-        <input type="text" id="auth-loginId" class="auth-input" placeholder="旅人账号 / 手机号">
-        <input type="tel" id="auth-phone" class="auth-input" placeholder="绑定手机号 (仅注册需要)" style="display:none;">
-        <input type="password" id="auth-password" class="auth-input" placeholder="通行口令">
-        <input type="text" id="auth-nickname" class="auth-input" placeholder="旅人昵称 (仅注册需要)" style="display:none;">
-    </div>
-    <button id="auth-main-btn" class="btn-add" style="width:100%; margin-top: 10px;" onclick="handleAuthAction()">认证并开启旅程</button>
-    <div style="text-align:center; margin-top:20px;">
-        <span id="auth-toggle-text" style="font-size:0.85rem; color:#999;">没有账号？</span>
-        <a href="javascript:void(0)" onclick="toggleAuthMode()" id="auth-toggle-btn" style="font-size:0.85rem; color:var(--deep-sage); text-decoration:none; font-weight:600;">建立新契约</a>
-    </div>
-</div>
-
-<div id="history-sheet" class="sheet">
-    <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
-    <h3 style="font-family:'Noto Serif SC', serif; color:var(--deep-sage); text-align:center;">往期契约记录</h3>
-    <div id="history-list" style="max-height: 400px; overflow-y: auto; margin-top: 20px;"></div>
-    <button class="btn-add" style="width:100%; margin-top:20px;" onclick="closeAll()">返回旅程</button>
-</div>
-
-<div id="cart-sheet" class="sheet">
-    <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
-    <h3 style="font-family:'Noto Serif SC', serif; color:var(--deep-sage);">您的清单</h3>
-    <div id="cart-empty-state" style="text-align:center; padding:40px 0; color:#ccc;">🧺 篮子是空的</div>
-    <div id="cart-items-list"></div>
-    <div id="cart-footer" style="display:none; border-top:1px solid #eee; padding-top:25px; margin-top:20px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:25px;">
-            <span style="color:var(--deep-sage); opacity:0.6; font-size:0.8rem;">工期定金 (30%)</span>
-            <span id="final-price" style="font-size:1.8rem; font-weight:700; color:var(--deep-sage);">¥0.00</span>
-        </div>
-        <button class="btn-add" style="width:100%;" onclick="showSignature()">前往签名契约</button>
-    </div>
-</div>
-
-<div id="sign-sheet" class="sheet">
-    <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
-    <h3 style="font-family:'Noto Serif SC', serif; color:var(--deep-sage); text-align:center;">订立旅人契约</h3>
-    <div style="position:relative;">
-        <canvas id="canvas" class="signature-pad"></canvas>
-        <div id="contract-seal" class="seal-box">匠心<br>印证</div>
-    </div>
-    <div style="display:flex; gap:12px; margin-top:25px;">
-        <button class="btn-add" style="flex:1; background:#f4f6f2; color:var(--deep-sage);" onclick="clearSign()">重写</button>
-        <button class="btn-add" style="flex:2;" onclick="confirmSign()">落印并支付</button>
-    </div>
-</div>
-
-<div id="pay-sheet" class="sheet" style="text-align:center;">
-    <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
-    <h3 style="font-family:'Noto Serif SC', serif; color:var(--deep-sage);">准备支付</h3>
-    <div style="width:180px; height:180px; margin:30px auto; background:white; border-radius:30px; padding:15px; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
-        <img id="qr-img" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=TravelerPay" style="width:100%; filter:sepia(0.5) contrast(1.2);">
-    </div>
-    <div id="modal-total" style="font-size:2.2rem; font-weight:800; color:var(--deep-sage); margin:20px 0;">¥0.00</div>
-    <button class="btn-add" style="width:100%;" onclick="completeOrder()">完成支付</button>
-</div>
-
-<div class="modal-overlay" onclick="closeAll()"></div>
-
-<script>
-    const API_BASE = "https://traveler-tale-shop.onrender.com/api";
-    const state = { isLoggedIn: false, isRegMode: false, cart: [], selectedDate: null, today: new Date().getDate(), selectedSize: null };
-
-    function enterShop() { document.getElementById('cover-page').classList.add('hidden'); }
-
-    const toast = (msg) => {
-        const el = document.getElementById('toast');
-        el.innerText = msg; el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), 2500);
-    };
-
-    const toggleSheet = (id, show = true) => {
-        document.body.classList.toggle('modal-open', show);
-        document.getElementById(id).classList.toggle('active', show);
-    };
-
-    const closeAll = () => {
-        document.body.classList.remove('modal-open');
-        document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
-    };
-
-    // --- 🌟 升级：注册/登录与退出逻辑 ---
-    function toggleAuthMode() {
-        state.isRegMode = !state.isRegMode;
-        document.getElementById('auth-title').innerText = state.isRegMode ? "建立新契约" : "身份认证";
-        
-        // 动态显示手机号和昵称输入框
-        document.getElementById('auth-phone').style.display = state.isRegMode ? "block" : "none";
-        document.getElementById('auth-nickname').style.display = state.isRegMode ? "block" : "none";
-        
-        // 动态修改第一个输入框的提示语
-        document.getElementById('auth-loginId').placeholder = state.isRegMode ? "设置旅人账号 (英/数字)" : "旅人账号 / 手机号";
-        
-        document.getElementById('auth-main-btn').innerText = state.isRegMode ? "建立契约" : "认证并开启旅程";
-        document.getElementById('auth-toggle-btn').innerText = state.isRegMode ? "返回登录" : "建立新契约";
-        document.getElementById('auth-toggle-text').innerText = state.isRegMode ? "已有账号？" : "没有账号？";
+        const newUser = new User({
+            username, phone, password, 
+            nickname: nickname || '旅人',
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+        });
+        await newUser.save();
+        res.json({ success: true, message: '契约建立成功' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '服务器开小差了，或数据已存在' });
     }
+});
 
-    async function handleAuthAction() {
-        const loginId = document.getElementById('auth-loginId').value.trim();
-        const p = document.getElementById('auth-password').value.trim();
-        const phone = document.getElementById('auth-phone').value.trim();
-        const n = document.getElementById('auth-nickname').value.trim();
-        
-        if (!loginId || !p) return toast("请完善通行凭证");
-        if (state.isRegMode && (!n || !phone)) return toast("请填写绑定的手机号和旅人昵称");
-
-        const endpoint = state.isRegMode ? "/register" : "/login";
-        // 如果是注册模式，把 loginId 作为 username 传给后端
-        const payload = state.isRegMode 
-            ? { username: loginId, phone: phone, password: p, nickname: n } 
-            : { loginId: loginId, password: p };
-
-        try {
-            const res = await fetch(`${API_BASE}${endpoint}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            
-            if (data.success) {
-                if (state.isRegMode) { 
-                    toast("🎉 契约建立成功，请登录！"); 
-                    toggleAuthMode(); 
-                } else { 
-                    localStorage.setItem('traveler_token', data.token); 
-                    applyLoginState(data.user); 
-                    closeAll(); 
-                    toast("欢迎回来，" + data.user.nickname);
-                }
-            } else { 
-                toast(data.message || "认证失败"); 
-            }
-        } catch (e) { toast("驿站连接失败，请检查网络"); }
-    }
-
-    // 🌟 新增：安全退出功能
-    function logout() {
-        localStorage.removeItem('traveler_token');
-        state.isLoggedIn = false;
-        document.getElementById('auth-btn').style.display = 'block';
-        document.getElementById('user-profile').style.display = 'none';
-        toast("🚪 已退出驿站，期待您的下次光临");
-        setTimeout(() => location.reload(), 1500); // 刷新页面清除残留状态
-    }
-
-    function applyLoginState(user) {
-        state.isLoggedIn = true;
-        document.getElementById('auth-btn').style.display = 'none';
-        document.getElementById('user-profile').style.display = 'flex';
-        document.getElementById('nav-avatar').src = user.avatar || 'https://images.unsplash.com/photo-1544502062-f82887f03d1c?auto=format&fit=crop&w=100&q=80';
-        document.getElementById('nav-nickname').innerText = user.nickname || '旅人';
-        document.getElementById('nav-points').innerText = `积分: ${user.points || 0}`;
-        renderCalendar(); 
-    }
-
-    // --- 历史订单查询逻辑 ---
-    async function loadHistory() {
-        if (!state.isLoggedIn) {
-            toast("请先进行身份认证");
-            return toggleSheet('auth-sheet');
+// --- 3. 登录接口 (支持账号或手机号) ---
+app.post('/api/login', async (req, res) => {
+    const { loginId, password } = req.body; 
+    try {
+        const user = await User.findOne({ 
+            $or: [{ username: loginId }, { phone: loginId }], 
+            password 
+        });
+        if (!user) {
+            return res.status(401).json({ success: false, message: '账号/手机号或通行口令不正确' });
         }
-
-        const token = localStorage.getItem('traveler_token');
-        try {
-            const res = await fetch(`${API_BASE}/orders`, {
-                headers: { 
-                    'Authorization': `Bearer ${token}`, 
-                    'Bypass-Tunnel-Reminder': 'true' 
-                }
-            });
-            const data = await res.json();
-            const list = document.getElementById('history-list');
-            
-            if (!data.success || !data.orders || data.orders.length === 0) {
-                list.innerHTML = `<div style="text-align:center; padding: 40px 0; color:#ccc;"><div style="font-size: 2rem; margin-bottom: 10px;">🪹</div>尚无契约记录</div>`;
-            } else {
-                list.innerHTML = data.orders.map(o => `
-                    <div style="background: white; padding:18px; border-radius: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.03); margin-bottom:12px; border: 1px solid rgba(193, 211, 193, 0.3);">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:10px; border-bottom: 1px dashed #eee; padding-bottom: 10px;">
-                            <span style="font-size:0.75rem; color:var(--deep-sage); opacity:0.7;">订单号: ${o._id ? o._id.substring(0,8) : '最新'}</span>
-                            <span style="font-size:0.75rem; color:#b22222; font-weight:bold;">${o.status || '已结契'}</span>
-                        </div>
-                        <div style="font-weight:600; font-size:0.95rem; color: #333; margin-bottom:8px;">
-                            ${o.items ? o.items.map(i => i.name + ' (' + i.size + ')').join('<br>') : '定制手作'}
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-size:0.7rem; color:#999;">预约日期: ${o.date ? '本月 '+o.date+' 日' : '待定'}</span>
-                            <span style="font-weight:700; color:var(--deep-sage); font-size: 1.1rem;">¥${o.total || '0.00'}</span>
-                        </div>
-                    </div>
-                `).join('');
-            }
-            toggleSheet('history-sheet', true);
-        } catch (e) { 
-            toast("获取历史契约失败，请稍后再试"); 
-        }
+        const token = jwt.sign({ userId: user._id }, SECRET_KEY, { expiresIn: '7d' });
+        res.json({ success: true, token, user: { nickname: user.nickname, avatar: user.avatar, points: user.points } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '登录异常' });
     }
+});
 
-    // --- 订单支付与提交 ---
-    async function completeOrder() {
-        const token = localStorage.getItem('traveler_token');
-        try {
-            const res = await fetch(`${API_BASE}/orders`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'Bypass-Tunnel-Reminder': 'true'
-                },
-                body: JSON.stringify({ items: state.cart, date: state.selectedDate, total: state.cart.reduce((a,b)=>a+b.price, 0) })
-            });
-            const data = await res.json();
-            if (data.success) { 
-                toast("⚜ 契约已归档，准备开启旅程"); 
-                setTimeout(() => location.reload(), 2000); 
-            }
-        } catch (e) { toast("归档失败"); }
+app.get('/api/me', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ success: false });
+        res.json({ success: true, user: { nickname: user.nickname, avatar: user.avatar, points: user.points } });
+    } catch (err) {
+        res.status(500).json({ success: false });
     }
+});
 
-    window.onload = async () => {
-        renderSizes();
-        const token = localStorage.getItem('traveler_token');
-        if (token) {
-            try {
-                const res = await fetch(`${API_BASE}/me`, {
-                    headers: { 'Authorization': `Bearer ${token}`, 'Bypass-Tunnel-Reminder': 'true' }
-                });
-                const data = await res.json();
-                if (data.success) applyLoginState(data.user);
-            } catch (e) { console.warn("未连接后端或 Token 失效"); }
-        }
-    };
+app.post('/api/orders', authenticateToken, async (req, res) => {
+    const { items, date, total } = req.body;
+    try {
+        const newOrder = new Order({ userId: req.user.userId, items, date, total });
+        await newOrder.save();
+        res.json({ success: true, message: '契约已归档' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '归档失败' });
+    }
+});
 
-    const sizeSpecs = [{ id: '1-3', name: '三分级', desc: '58-65cm', fee: 0 }, { id: '1-4', name: '四分级', desc: '40-45cm', fee: -200 }, { id: 'uncle', name: '大叔级', desc: '壮叔', fee: 350 }];
-    function renderSizes() { document.getElementById('size-box').innerHTML = sizeSpecs.map(s => `<div class="size-chip" id="chip-${s.id}" onclick="selectSize('${s.id}')"><span style="display:block; font-weight:600;">${s.name}</span><span style="font-size:0.6rem; opacity:0.8;">${s.fee >= 0 ? '+' : ''}${s.fee}元</span></div>`).join(''); }
-    function selectSize(id) { state.selectedSize = sizeSpecs.find(s => s.id === id); document.querySelectorAll('.size-chip').forEach(el => el.classList.remove('active')); document.getElementById(`chip-${id}`).classList.add('active'); updateDisplayPrice(); }
-    function updateDisplayPrice() { const base = 2999; const total = state.selectedSize ? base + state.selectedSize.fee : base; document.getElementById('display-price').innerText = `¥${total}.00`; }
-    
-    function addToCart(name, basePrice, img) { 
-        if(!state.isLoggedIn) return toggleSheet('auth-sheet'); 
-        if(!state.selectedSize) return toast("请先挑选 Size 规格"); 
-        if(!state.selectedDate) return toast("请先预约慢档日期"); 
-        
-        const finalPrice = basePrice + state.selectedSize.fee;
-        state.cart.push({ id: Date.now(), name, price: finalPrice, img, size: state.selectedSize.name }); 
-        updateCartUI(); 
-        toast("已放入竹篮"); 
+app.get('/api/orders', authenticateToken, async (req, res) => {
+    try {
+        const orders = await Order.find({ userId: req.user.userId }).sort({ createdAt: -1 });
+        res.json({ success: true, orders });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取记录失败' });
     }
-    
-    function updateCartUI() { 
-        document.getElementById('cart-count').innerText = state.cart.length; 
-        if(state.cart.length > 0) document.getElementById('cart-footer').style.display='block'; 
-        document.getElementById('cart-empty-state').style.display = state.cart.length ? 'none' : 'block'; 
-        
-        const list = document.getElementById('cart-items-list');
-        list.innerHTML = state.cart.map(item => `
-            <div style="display:flex; gap:15px; margin-bottom:15px; background:white; padding:10px; border-radius:20px;">
-                <img src="${item.img}" style="width:60px; height:60px; border-radius:15px; object-fit:cover;">
-                <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-                    <div style="font-weight:700; color:var(--deep-sage); font-size:0.9rem;">${item.name} (${item.size})</div>
-                    <div style="color:#b22222; font-weight:700;">¥${item.price}</div>
-                </div>
-            </div>
-        `).join('');
+});
 
-        const total = state.cart.reduce((a,b) => a + b.price, 0);
-        document.getElementById('final-price').innerText = `¥${(total * 0.3).toFixed(2)}`;
-        document.getElementById('modal-total').innerText = `¥${(total * 0.3).toFixed(2)}`;
-    }
-    
-    function renderCalendar() { 
-        const grid = document.getElementById('calendar'); 
-        grid.innerHTML = ''; 
-        for(let i=1; i<=31; i++){ 
-            const day = document.createElement('div'); 
-            day.className = `cal-day ${i > state.today+2 ? 'valid':''}`; 
-            day.id = `day-${i}`;
-            day.innerText = i; 
-            if(i > state.today+2) day.onclick = () => { 
-                state.selectedDate = i; 
-                document.querySelectorAll('.cal-day').forEach(d => d.classList.remove('selected'));
-                day.classList.add('selected');
-                document.getElementById('date-status').innerText=`已选定工期：本月 ${i} 日`; 
-            }; 
-            grid.appendChild(day); 
-        } 
-    }
-    
-    let canvas, ctx;
-    function showSignature() { toggleSheet('cart-sheet', false); toggleSheet('sign-sheet', true); setTimeout(() => { canvas = document.getElementById('canvas'); ctx = canvas.getContext('2d'); canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; ctx.lineWidth = 3; ctx.strokeStyle = "#3a4d3a"; let drawing = false; canvas.onmousedown = canvas.ontouchstart = (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX || e.touches[0].clientX - canvas.getBoundingClientRect().left, e.offsetY || e.touches[0].clientY - canvas.getBoundingClientRect().top); }; canvas.onmousemove = canvas.ontouchmove = (e) => { if(drawing) { ctx.lineTo(e.offsetX || e.touches[0].clientX - canvas.getBoundingClientRect().left, e.offsetY || e.touches[0].clientY - canvas.getBoundingClientRect().top); ctx.stroke(); } e.preventDefault(); }; canvas.onmouseup = canvas.ontouchend = () => drawing = false; }, 200); }
-    function clearSign() { ctx.clearRect(0,0,canvas.width,canvas.height); }
-    function confirmSign() { document.getElementById('contract-seal').classList.add('seal-active'); setTimeout(() => { toggleSheet('sign-sheet', false); toggleSheet('pay-sheet', true); }, 1200); }
-</script>
-</body>
-</html>
+app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+
+app.listen(PORT, () => console.log(`🚀 驿站服务器已在端口 ${PORT} 启动`));
