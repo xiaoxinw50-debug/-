@@ -33,17 +33,14 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* === 🌟 新增：封面海报样式 === */
+        /* === 🌟 封面海报样式 === */
         #cover-page {
             position: fixed; inset: 0; z-index: 3000;
-            /* 背景图：加了一层暗色遮罩让文字更清晰 */
             background: linear-gradient(rgba(60, 75, 60, 0.3), rgba(40, 50, 40, 0.7)), url('https://images.unsplash.com/photo-1515347619362-e6fd233b4fb5?auto=format&fit=crop&w=1080&q=80') center/cover;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             color: white; transition: all 1.2s var(--apple-ease);
         }
-        /* 隐藏海报时的动画效果 */
         #cover-page.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); filter: blur(10px); }
-        
         .cover-title { font-family: 'Noto Serif SC', serif; font-size: 3.2rem; margin-bottom: 10px; font-weight: 700; letter-spacing: 6px; text-shadow: 0 4px 20px rgba(0,0,0,0.4); }
         .cover-sub { font-family: 'SF Pro Display', sans-serif; font-size: 0.9rem; letter-spacing: 4px; opacity: 0.85; margin-bottom: 50px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
         .btn-enter { 
@@ -104,11 +101,7 @@
         .signature-pad { background: #fff; border: 2px dashed var(--sage-green); border-radius: 24px; margin: 15px 0; touch-action: none; width: 100%; height: 220px; cursor: crosshair; }
         .seal-box { position: absolute; bottom: 40px; right: 40px; width: 85px; height: 85px; border: 3px solid #b22222; color: #b22222; border-radius: 50%; display: none; align-items: center; justify-content: center; font-weight: 900; font-family: 'Noto Serif SC'; font-size: 0.85rem; opacity: 0.8; pointer-events: none; text-align: center; line-height: 1.2; background: rgba(178, 34, 34, 0.05); }
         .seal-active { display: flex !important; animation: seal-drop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-        @keyframes seal-drop {
-            0% { transform: scale(4) rotate(30deg); opacity: 0; filter: blur(8px); }
-            70% { transform: scale(0.9) rotate(-15deg); opacity: 1; filter: blur(0); }
-            100% { transform: scale(1) rotate(-15deg); opacity: 0.85; box-shadow: 0 0 15px rgba(178, 34, 34, 0.2); }
-        }
+        @keyframes seal-drop { 0% { transform: scale(4) rotate(30deg); opacity: 0; filter: blur(8px); } 70% { transform: scale(0.9) rotate(-15deg); opacity: 1; filter: blur(0); } 100% { transform: scale(1) rotate(-15deg); opacity: 0.85; box-shadow: 0 0 15px rgba(178, 34, 34, 0.2); } }
 
         /* === 8. Toast 提示 === */
         #toast { position: fixed; top: 40px; left: 50%; transform: translateX(-50%) translateY(-100px); background: var(--deep-sage); color: white; padding: 12px 24px; border-radius: 100px; z-index: 2000; transition: 0.5s var(--apple-ease); font-size: 0.9rem; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
@@ -130,13 +123,16 @@
         <div class="logo">⚜ 旅人物语</div>
         <div class="nav-right">
             <div id="history-btn" onclick="loadHistory()" style="cursor:pointer; font-size:1.2rem; display:flex; align-items:center;" title="历史契约">📜</div>
+            
             <div id="auth-btn" class="nav-btn" onclick="toggleSheet('auth-sheet')">IDENTITY AUTH</div>
+            
             <div id="user-profile" style="display:none; align-items:center; gap:10px; background:rgba(193,211,193,0.3); padding:6px 14px; border-radius:100px;">
                 <img src="" class="user-avatar" id="nav-avatar" style="width:28px; height:28px; border-radius:50%; border: 2px solid white;">
                 <div style="display: flex; flex-direction: column;">
                     <span id="nav-nickname" style="font-size:0.75rem; color:var(--deep-sage); font-weight:700; line-height:1;">旅人</span>
                     <span id="nav-points" style="font-size:0.6rem; color:var(--deep-sage); opacity:0.7;">积分: 0</span>
                 </div>
+                <div onclick="logout()" style="cursor:pointer; margin-left:5px; padding-left:10px; border-left:1px solid rgba(93,117,93,0.3); font-size:1rem;" title="退出旅程">🚪</div>
             </div>
         </div>
     </nav>
@@ -182,9 +178,10 @@
     <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
     <h3 id="auth-title" style="font-family:'Noto Serif SC', serif; color:var(--deep-sage); text-align:center;">身份认证</h3>
     <div style="margin-top:20px;">
-        <input type="text" id="auth-username" class="auth-input" placeholder="旅人账号 (必填)">
-        <input type="password" id="auth-password" class="auth-input" placeholder="通行口令 (必填)">
-        <input type="text" id="auth-nickname" class="auth-input" placeholder="旅人昵称 (给自己起个名字吧)" style="display:none;">
+        <input type="text" id="auth-loginId" class="auth-input" placeholder="旅人账号 / 手机号">
+        <input type="tel" id="auth-phone" class="auth-input" placeholder="绑定手机号 (仅注册需要)" style="display:none;">
+        <input type="password" id="auth-password" class="auth-input" placeholder="通行口令">
+        <input type="text" id="auth-nickname" class="auth-input" placeholder="旅人昵称 (仅注册需要)" style="display:none;">
     </div>
     <button id="auth-main-btn" class="btn-add" style="width:100%; margin-top: 10px;" onclick="handleAuthAction()">认证并开启旅程</button>
     <div style="text-align:center; margin-top:20px;">
@@ -243,13 +240,8 @@
     const API_BASE = "https://traveler-tale-shop.onrender.com/api";
     const state = { isLoggedIn: false, isRegMode: false, cart: [], selectedDate: null, today: new Date().getDate(), selectedSize: null };
 
-    // === 🌟 新增：推开店门逻辑 ===
-    function enterShop() {
-        // 添加 hidden 类，触发 CSS 放大淡出动画
-        document.getElementById('cover-page').classList.add('hidden');
-    }
+    function enterShop() { document.getElementById('cover-page').classList.add('hidden'); }
 
-    // --- UI 交互控制 ---
     const toast = (msg) => {
         const el = document.getElementById('toast');
         el.innerText = msg; el.classList.add('show');
@@ -266,26 +258,37 @@
         document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
     };
 
-    // --- 注册与登录逻辑 ---
+    // --- 🌟 升级：注册/登录与退出逻辑 ---
     function toggleAuthMode() {
         state.isRegMode = !state.isRegMode;
         document.getElementById('auth-title').innerText = state.isRegMode ? "建立新契约" : "身份认证";
+        
+        // 动态显示手机号和昵称输入框
+        document.getElementById('auth-phone').style.display = state.isRegMode ? "block" : "none";
         document.getElementById('auth-nickname').style.display = state.isRegMode ? "block" : "none";
+        
+        // 动态修改第一个输入框的提示语
+        document.getElementById('auth-loginId').placeholder = state.isRegMode ? "设置旅人账号 (英/数字)" : "旅人账号 / 手机号";
+        
         document.getElementById('auth-main-btn').innerText = state.isRegMode ? "建立契约" : "认证并开启旅程";
         document.getElementById('auth-toggle-btn').innerText = state.isRegMode ? "返回登录" : "建立新契约";
         document.getElementById('auth-toggle-text').innerText = state.isRegMode ? "已有账号？" : "没有账号？";
     }
 
     async function handleAuthAction() {
-        const u = document.getElementById('auth-username').value;
-        const p = document.getElementById('auth-password').value;
-        const n = document.getElementById('auth-nickname').value;
+        const loginId = document.getElementById('auth-loginId').value.trim();
+        const p = document.getElementById('auth-password').value.trim();
+        const phone = document.getElementById('auth-phone').value.trim();
+        const n = document.getElementById('auth-nickname').value.trim();
         
-        if (!u || !p) return toast("请完善通行凭证");
-        if (state.isRegMode && !n) return toast("请填写旅人昵称");
+        if (!loginId || !p) return toast("请完善通行凭证");
+        if (state.isRegMode && (!n || !phone)) return toast("请填写绑定的手机号和旅人昵称");
 
         const endpoint = state.isRegMode ? "/register" : "/login";
-        const payload = state.isRegMode ? { username: u, password: p, nickname: n } : { username: u, password: p };
+        // 如果是注册模式，把 loginId 作为 username 传给后端
+        const payload = state.isRegMode 
+            ? { username: loginId, phone: phone, password: p, nickname: n } 
+            : { loginId: loginId, password: p };
 
         try {
             const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -306,9 +309,19 @@
                     toast("欢迎回来，" + data.user.nickname);
                 }
             } else { 
-                toast(data.message || "认证失败，请检查账号密码"); 
+                toast(data.message || "认证失败"); 
             }
         } catch (e) { toast("驿站连接失败，请检查网络"); }
+    }
+
+    // 🌟 新增：安全退出功能
+    function logout() {
+        localStorage.removeItem('traveler_token');
+        state.isLoggedIn = false;
+        document.getElementById('auth-btn').style.display = 'block';
+        document.getElementById('user-profile').style.display = 'none';
+        toast("🚪 已退出驿站，期待您的下次光临");
+        setTimeout(() => location.reload(), 1500); // 刷新页面清除残留状态
     }
 
     function applyLoginState(user) {
@@ -340,11 +353,7 @@
             const list = document.getElementById('history-list');
             
             if (!data.success || !data.orders || data.orders.length === 0) {
-                list.innerHTML = `
-                    <div style="text-align:center; padding: 40px 0; color:#ccc;">
-                        <div style="font-size: 2rem; margin-bottom: 10px;">🪹</div>
-                        尚无契约记录
-                    </div>`;
+                list.innerHTML = `<div style="text-align:center; padding: 40px 0; color:#ccc;"><div style="font-size: 2rem; margin-bottom: 10px;">🪹</div>尚无契约记录</div>`;
             } else {
                 list.innerHTML = data.orders.map(o => `
                     <div style="background: white; padding:18px; border-radius: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.03); margin-bottom:12px; border: 1px solid rgba(193, 211, 193, 0.3);">
@@ -365,7 +374,6 @@
             toggleSheet('history-sheet', true);
         } catch (e) { 
             toast("获取历史契约失败，请稍后再试"); 
-            console.error(e);
         }
     }
 
@@ -390,7 +398,6 @@
         } catch (e) { toast("归档失败"); }
     }
 
-    // --- 页面初始化校验 ---
     window.onload = async () => {
         renderSizes();
         const token = localStorage.getItem('traveler_token');
@@ -405,7 +412,6 @@
         }
     };
 
-    // --- 商品选择、购物车与日历逻辑 ---
     const sizeSpecs = [{ id: '1-3', name: '三分级', desc: '58-65cm', fee: 0 }, { id: '1-4', name: '四分级', desc: '40-45cm', fee: -200 }, { id: 'uncle', name: '大叔级', desc: '壮叔', fee: 350 }];
     function renderSizes() { document.getElementById('size-box').innerHTML = sizeSpecs.map(s => `<div class="size-chip" id="chip-${s.id}" onclick="selectSize('${s.id}')"><span style="display:block; font-weight:600;">${s.name}</span><span style="font-size:0.6rem; opacity:0.8;">${s.fee >= 0 ? '+' : ''}${s.fee}元</span></div>`).join(''); }
     function selectSize(id) { state.selectedSize = sizeSpecs.find(s => s.id === id); document.querySelectorAll('.size-chip').forEach(el => el.classList.remove('active')); document.getElementById(`chip-${id}`).classList.add('active'); updateDisplayPrice(); }
@@ -461,7 +467,6 @@
         } 
     }
     
-    // --- 签名版逻辑 ---
     let canvas, ctx;
     function showSignature() { toggleSheet('cart-sheet', false); toggleSheet('sign-sheet', true); setTimeout(() => { canvas = document.getElementById('canvas'); ctx = canvas.getContext('2d'); canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; ctx.lineWidth = 3; ctx.strokeStyle = "#3a4d3a"; let drawing = false; canvas.onmousedown = canvas.ontouchstart = (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX || e.touches[0].clientX - canvas.getBoundingClientRect().left, e.offsetY || e.touches[0].clientY - canvas.getBoundingClientRect().top); }; canvas.onmousemove = canvas.ontouchmove = (e) => { if(drawing) { ctx.lineTo(e.offsetX || e.touches[0].clientX - canvas.getBoundingClientRect().left, e.offsetY || e.touches[0].clientY - canvas.getBoundingClientRect().top); ctx.stroke(); } e.preventDefault(); }; canvas.onmouseup = canvas.ontouchend = () => drawing = false; }, 200); }
     function clearSign() { ctx.clearRect(0,0,canvas.width,canvas.height); }
