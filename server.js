@@ -15,6 +15,30 @@ app.use(bodyParser.json());
 // 静态文件托管：优先寻找静态资源
 app.use(express.static(path.join(__dirname, '.')));
 
+// 内存数据库 (实际生产请换成 MongoDB)
+const orders = []; 
+
+// 归档订单
+app.post('/api/orders', (req, res) => {
+    const { cart, date } = req.body;
+    const newOrder = {
+        id: Date.now(),
+        items: cart,
+        date: date,
+        total: cart.reduce((sum, item) => sum + item.price, 0),
+        status: '已契约'
+    };
+    orders.push(newOrder);
+    res.json({ success: true, order: newOrder });
+});
+
+// 获取所有订单 (你可以按需添加 filter 筛选当前用户)
+app.get('/api/orders', (req, res) => {
+    res.json({ success: true, orders: orders });
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 // --- API 路由 ---
 app.post('/api/register', (req, res) => {
     const { username, password, nickname } = req.body;
