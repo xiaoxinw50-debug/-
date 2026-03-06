@@ -33,11 +33,30 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* === 🌟 新增：封面海报样式 === */
+        #cover-page {
+            position: fixed; inset: 0; z-index: 3000;
+            /* 背景图：加了一层暗色遮罩让文字更清晰 */
+            background: linear-gradient(rgba(60, 75, 60, 0.3), rgba(40, 50, 40, 0.7)), url('https://images.unsplash.com/photo-1515347619362-e6fd233b4fb5?auto=format&fit=crop&w=1080&q=80') center/cover;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; transition: all 1.2s var(--apple-ease);
+        }
+        /* 隐藏海报时的动画效果 */
+        #cover-page.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); filter: blur(10px); }
+        
+        .cover-title { font-family: 'Noto Serif SC', serif; font-size: 3.2rem; margin-bottom: 10px; font-weight: 700; letter-spacing: 6px; text-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        .cover-sub { font-family: 'SF Pro Display', sans-serif; font-size: 0.9rem; letter-spacing: 4px; opacity: 0.85; margin-bottom: 50px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        .btn-enter { 
+            background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255,255,255,0.5); color: white; padding: 16px 45px; border-radius: 100px; 
+            font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.5s; letter-spacing: 2px; 
+        }
+        .btn-enter:hover { background: white; color: var(--deep-sage); transform: translateY(-3px); box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+
         /* === 2. 导航栏样式 === */
         nav { 
             position: sticky; top: 0; z-index: 100; 
-            backdrop-filter: blur(25px); 
-            -webkit-backdrop-filter: blur(25px); 
+            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); 
             background: rgba(251, 251, 240, 0.85); 
             display: flex; justify-content: space-between; align-items: center; 
             padding: 20px 24px; border-bottom: 1px solid rgba(93, 117, 93, 0.1); 
@@ -51,8 +70,7 @@
         .product-card { 
             background: white; border-radius: 36px; padding: 18px; margin-bottom: 28px; 
             box-shadow: 0 15px 45px rgba(93, 117, 93, 0.08); position: relative; 
-            border: 1px solid rgba(193, 211, 193, 0.3);
-            animation: fadeInUp 0.8s var(--apple-ease) backwards;
+            border: 1px solid rgba(193, 211, 193, 0.3); animation: fadeInUp 0.8s var(--apple-ease) backwards;
         }
         .img-box { width: 100%; height: 400px; background: #f4f6f2; border-radius: 28px; overflow: hidden; position: relative; }
         .img-box img { width: 100%; height: 100%; object-fit: cover; transition: 1.2s var(--apple-ease); }
@@ -62,7 +80,6 @@
         .size-selector { display: flex; gap: 12px; overflow-x: auto; padding: 10px 0; }
         .size-chip { flex-shrink: 0; padding: 14px 22px; border-radius: 18px; background: #f9faf7; color: #8fa58f; border: 1.5px solid transparent; transition: 0.4s; cursor: pointer; text-align: center; }
         .size-chip.active { background: white; border-color: var(--sage-green); color: var(--deep-sage); box-shadow: 0 8px 25px rgba(193, 211, 193, 0.25); transform: translateY(-2px); }
-
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 20px; }
         .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border-radius: 50%; color: #d0d8d0; transition: 0.3s; position: relative; }
         .cal-day.valid { color: #5d755d; cursor: pointer; font-weight: 600; }
@@ -99,6 +116,12 @@
     </style>
 </head>
 <body>
+
+<div id="cover-page">
+    <div class="cover-title">旅人物语</div>
+    <div class="cover-sub">TRAVELER'S TALE · 慢作定制</div>
+    <button class="btn-enter" onclick="enterShop()">推开驿站之门</button>
+</div>
 
 <div id="toast">已放入竹篮</div>
 
@@ -173,8 +196,7 @@
 <div id="history-sheet" class="sheet">
     <div style="width:45px; height:5px; background:#e0e0e0; border-radius:10px; margin:0 auto 28px;"></div>
     <h3 style="font-family:'Noto Serif SC', serif; color:var(--deep-sage); text-align:center;">往期契约记录</h3>
-    <div id="history-list" style="max-height: 400px; overflow-y: auto; margin-top: 20px;">
-        </div>
+    <div id="history-list" style="max-height: 400px; overflow-y: auto; margin-top: 20px;"></div>
     <button class="btn-add" style="width:100%; margin-top:20px;" onclick="closeAll()">返回旅程</button>
 </div>
 
@@ -218,9 +240,14 @@
 <div class="modal-overlay" onclick="closeAll()"></div>
 
 <script>
-    // 核心 API 路径
     const API_BASE = "https://traveler-tale-shop.onrender.com/api";
     const state = { isLoggedIn: false, isRegMode: false, cart: [], selectedDate: null, today: new Date().getDate(), selectedSize: null };
+
+    // === 🌟 新增：推开店门逻辑 ===
+    function enterShop() {
+        // 添加 hidden 类，触发 CSS 放大淡出动画
+        document.getElementById('cover-page').classList.add('hidden');
+    }
 
     // --- UI 交互控制 ---
     const toast = (msg) => {
@@ -239,10 +266,10 @@
         document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
     };
 
-    // --- ✅ 功能 1: 注册与登录逻辑 ---
+    // --- 注册与登录逻辑 ---
     function toggleAuthMode() {
         state.isRegMode = !state.isRegMode;
-        document.getElementById('auth-title').innerText = state.isRegMode ? "建立新契约 (注册)" : "身份认证 (登录)";
+        document.getElementById('auth-title').innerText = state.isRegMode ? "建立新契约" : "身份认证";
         document.getElementById('auth-nickname').style.display = state.isRegMode ? "block" : "none";
         document.getElementById('auth-main-btn').innerText = state.isRegMode ? "建立契约" : "认证并开启旅程";
         document.getElementById('auth-toggle-btn').innerText = state.isRegMode ? "返回登录" : "建立新契约";
@@ -271,7 +298,7 @@
             if (data.success) {
                 if (state.isRegMode) { 
                     toast("🎉 契约建立成功，请登录！"); 
-                    toggleAuthMode(); // 注册成功自动切回登录，账号密码框保持原样，方便直接点登录
+                    toggleAuthMode(); 
                 } else { 
                     localStorage.setItem('traveler_token', data.token); 
                     applyLoginState(data.user); 
@@ -288,16 +315,14 @@
         state.isLoggedIn = true;
         document.getElementById('auth-btn').style.display = 'none';
         document.getElementById('user-profile').style.display = 'flex';
-        // 如果后端没返回头像，给个默认头像
         document.getElementById('nav-avatar').src = user.avatar || 'https://images.unsplash.com/photo-1544502062-f82887f03d1c?auto=format&fit=crop&w=100&q=80';
         document.getElementById('nav-nickname').innerText = user.nickname || '旅人';
         document.getElementById('nav-points').innerText = `积分: ${user.points || 0}`;
-        renderCalendar(); // 登录后渲染日历供选择
+        renderCalendar(); 
     }
 
-    // --- ✅ 功能 2: 历史订单查询逻辑 ---
+    // --- 历史订单查询逻辑 ---
     async function loadHistory() {
-        // 安全拦截：未登录不给查
         if (!state.isLoggedIn) {
             toast("请先进行身份认证");
             return toggleSheet('auth-sheet');
@@ -305,7 +330,6 @@
 
         const token = localStorage.getItem('traveler_token');
         try {
-            // 注意这里：加上了 Authorization Header 确保只查自己的订单
             const res = await fetch(`${API_BASE}/orders`, {
                 headers: { 
                     'Authorization': `Bearer ${token}`, 
@@ -322,7 +346,6 @@
                         尚无契约记录
                     </div>`;
             } else {
-                // 美化历史记录卡片
                 list.innerHTML = data.orders.map(o => `
                     <div style="background: white; padding:18px; border-radius: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.03); margin-bottom:12px; border: 1px solid rgba(193, 211, 193, 0.3);">
                         <div style="display:flex; justify-content:space-between; margin-bottom:10px; border-bottom: 1px dashed #eee; padding-bottom: 10px;">
@@ -404,7 +427,6 @@
         if(state.cart.length > 0) document.getElementById('cart-footer').style.display='block'; 
         document.getElementById('cart-empty-state').style.display = state.cart.length ? 'none' : 'block'; 
         
-        // 渲染购物车列表
         const list = document.getElementById('cart-items-list');
         list.innerHTML = state.cart.map(item => `
             <div style="display:flex; gap:15px; margin-bottom:15px; background:white; padding:10px; border-radius:20px;">
@@ -416,7 +438,6 @@
             </div>
         `).join('');
 
-        // 计算 30% 定金
         const total = state.cart.reduce((a,b) => a + b.price, 0);
         document.getElementById('final-price').innerText = `¥${(total * 0.3).toFixed(2)}`;
         document.getElementById('modal-total').innerText = `¥${(total * 0.3).toFixed(2)}`;
@@ -424,7 +445,7 @@
     
     function renderCalendar() { 
         const grid = document.getElementById('calendar'); 
-        grid.innerHTML = ''; // 清空重新渲染
+        grid.innerHTML = ''; 
         for(let i=1; i<=31; i++){ 
             const day = document.createElement('div'); 
             day.className = `cal-day ${i > state.today+2 ? 'valid':''}`; 
