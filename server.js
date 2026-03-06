@@ -19,14 +19,13 @@ mongoose.connect(MONGODB_URI)
     .then(() => console.log('🍃 [数据库] MongoDB 契约石碑已连接！'))
     .catch(err => console.error('❌ [数据库] 连接失败:', err));
 
-// --- 1. 升级版用户模型 (新增手机号) ---
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true }, 
     phone: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     nickname: { type: String, default: '无名旅人' },
     avatar: { type: String },
-    points: { type: Number, default: 880 }
+    points: { type: Number, default: 880 } // 初始赠送880积分
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -35,6 +34,8 @@ const OrderSchema = new mongoose.Schema({
     items: Array,
     date: String,
     total: Number,
+    pointsEarned: Number, // 本次获得的积分
+    pointsSpent: Number,  // 本次消耗的积分
     status: { type: String, default: '已结契' },
     createdAt: { type: Date, default: Date.now }
 });
@@ -52,42 +53,27 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// --- 2. 注册接口 ---
 app.post('/api/register', async (req, res) => {
     const { username, phone, password, nickname } = req.body;
     try {
         const existingUser = await User.findOne({ $or: [{ username }, { phone }] });
-        if (existingUser) {
-            return res.status(400).json({ success: false, message: '该旅人账号或手机号已被注册' });
-        }
-        const newUser = new User({
-            username, phone, password, 
-            nickname: nickname || '旅人',
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
-        });
+        if (existingUser) return res.status(400).json({ success: false, message: '该账号或手机号已被注册' });
+        
+        const newUser = new User({ username, phone, password, nickname: nickname || '旅人', avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}` });
         await newUser.save();
         res.json({ success: true, message: '契约建立成功' });
-    } catch (err) {
-        res.status(500).json({ success: false, message: '服务器开小差了，或数据已存在' });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: '服务器开小差了' }); }
 });
 
-// --- 3. 登录接口 (支持账号或手机号) ---
 app.post('/api/login', async (req, res) => {
     const { loginId, password } = req.body; 
     try {
-        const user = await User.findOne({ 
-            $or: [{ username: loginId }, { phone: loginId }], 
-            password 
-        });
-        if (!user) {
-            return res.status(401).json({ success: false, message: '账号/手机号或通行口令不正确' });
-        }
+        const user = await User.findOne({ $or: [{ username: loginId }, { phone: loginId }], password });
+        if (!user) return res.status(401).json({ success: false, message: '账号/手机号或口令不正确' });
+        
         const token = jwt.sign({ userId: user._id }, SECRET_KEY, { expiresIn: '7d' });
         res.json({ success: true, token, user: { nickname: user.nickname, avatar: user.avatar, points: user.points } });
-    } catch (err) {
-        res.status(500).json({ success: false, message: '登录异常' });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: '登录异常' }); }
 });
 
 app.get('/api/me', authenticateToken, async (req, res) => {
@@ -95,17 +81,34 @@ app.get('/api/me', authenticateToken, async (req, res) => {
         const user = await User.findById(req.user.userId);
         if (!user) return res.status(404).json({ success: false });
         res.json({ success: true, user: { nickname: user.nickname, avatar: user.avatar, points: user.points } });
-    } catch (err) {
-        res.status(500).json({ success: false });
-    }
+    } catch (err) { res.status(500).json({ success: false }); }
 });
 
+// 🌟 升级版：提交订单与积分结算
 app.post('/api/orders', authenticateToken, async (req, res) => {
     const { items, date, total } = req.body;
     try {
-        const newOrder = new Order({ userId: req.user.userId, items, date, total });
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+        // 1. 计算本次要消耗的积分 (购物车里 isRedemption 为 true 的商品)
+        const pointsSpent = items.reduce((sum, item) => sum + (item.pointsCost || 0), 0);
+        if (user.points < pointsSpent) {
+            return res.status(400).json({ success: false, message: '积分余额不足，无法结契' });
+        }
+
+        // 2. 计算本次消费获得的积分 (1元 = 1积分，向下取整)
+        const pointsEarned = Math.floor(total);
+
+        // 3. 更新用户余额：当前积分 - 花掉的 + 赚到的
+        user.points = user.points - pointsSpent + pointsEarned;
+        await user.save();
+
+        // 4. 生成订单记录
+        const newOrder = new Order({ userId: req.user.userId, items, date, total, pointsEarned, pointsSpent });
         await newOrder.save();
-        res.json({ success: true, message: '契约已归档' });
+
+        res.json({ success: true, message: '契约已归档', newPoints: user.points });
     } catch (err) {
         res.status(500).json({ success: false, message: '归档失败' });
     }
@@ -115,11 +118,8 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
     try {
         const orders = await Order.find({ userId: req.user.userId }).sort({ createdAt: -1 });
         res.json({ success: true, orders });
-    } catch (err) {
-        res.status(500).json({ success: false, message: '获取记录失败' });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: '获取记录失败' }); }
 });
 
 app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-
 app.listen(PORT, () => console.log(`🚀 驿站服务器已在端口 ${PORT} 启动`));
